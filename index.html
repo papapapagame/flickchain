@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>フリックチェイン</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-left">
+        <span class="label">TIME</span>
+        <span id="time">60</span>
+      </div>
+      <div class="hud-center">
+        <span class="label">SCORE</span>
+        <span id="score">0</span>
+      </div>
+      <div class="hud-right">
+        <span class="label">MAX</span>
+        <span id="max-chain">0</span>
+      </div>
+    </div>
+
+    <div id="title" class="overlay">
+      <p class="brand">FLICK CHAIN</p>
+      <h1>フリックチェイン</h1>
+      <p class="sub">敵をぶつけて連鎖一掃。60秒勝負。</p>
+      <button id="btn-start" type="button">スタート</button>
+      <p class="hint">下から上へフリックで発射</p>
+    </div>
+
+    <div id="result" class="overlay hidden">
+      <p class="brand">RESULT</p>
+      <h1 id="result-score">0</h1>
+      <ul class="stats">
+        <li><span>最大連鎖</span><strong id="result-chain">0</strong></li>
+        <li><span>総撃破</span><strong id="result-kills">0</strong></li>
+      </ul>
+      <button id="btn-retry" type="button">もう一回</button>
+    </div>
+
+    <div id="chain-fx" aria-hidden="true">
+      <span id="chain-fx-main"></span>
+      <span id="chain-fx-sub"></span>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
