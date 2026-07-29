@@ -13,6 +13,14 @@
   const WALL_BOUNCE = 0.72;
   const ENEMY_BOUNCE = 0.88;
   const HIT_STOP_MAX = 0.08;
+  const FEVER_MAX = 100;
+  const FEVER_DURATION = 5.2;
+  const FEVER_PER_KILL = 7;
+  const BOMB_FUSE = 7;
+  const CORE_BLAST_R = 155;
+  const RUSH_TIME = 10;
+  const RUSH_SCORE_MUL = 1.5;
+  const WALL_BONUS = 50;
   const FX_COLORS = ["#9fe7ff", "#ffd36a", "#ff8fd8", "#7CFFB2", "#ff9a6b", "#c5b7ff", "#ffffff"];
 
   const canvas = document.getElementById("game");
@@ -23,9 +31,11 @@
   const chainFx = document.getElementById("chain-fx");
   const chainFxMain = document.getElementById("chain-fx-main");
   const chainFxSub = document.getElementById("chain-fx-sub");
+  const modeBanner = document.getElementById("mode-banner");
   const elTime = document.getElementById("time");
   const elScore = document.getElementById("score");
   const elMaxChain = document.getElementById("max-chain");
+  const elFeverFill = document.getElementById("fever-fill");
   const elResultScore = document.getElementById("result-score");
   const elResultChain = document.getElementById("result-chain");
   const elResultKills = document.getElementById("result-kills");
@@ -51,10 +61,15 @@
     aim: null,
     lastTs: 0,
     spawnAcc: 0,
+    specialAcc: 0,
     chainWindow: 0,
     currentChain: 0,
     comboMul: 1,
     lastMilestone: 0,
+    fever: 0,
+    feverTime: 0,
+    rushActive: false,
+    rushAnnounced: false,
   };
 
   const audio = {
@@ -96,6 +111,26 @@
       this.beep(520, 0.08, "triangle", 0.04);
       this.beep(780, 0.14, "sine", 0.03);
     },
+    fever() {
+      this.beep(360, 0.1, "sawtooth", 0.04);
+      this.beep(540, 0.16, "triangle", 0.045);
+      this.beep(720, 0.22, "sine", 0.03);
+    },
+    bombWarn() {
+      this.beep(140, 0.08, "square", 0.035);
+    },
+    bombBoom() {
+      this.beep(90, 0.25, "sawtooth", 0.05);
+      this.beep(60, 0.3, "triangle", 0.04);
+    },
+    core() {
+      this.beep(260, 0.1, "triangle", 0.04);
+      this.beep(520, 0.18, "sine", 0.04);
+    },
+    rush() {
+      this.beep(200, 0.08, "square", 0.04);
+      this.beep(400, 0.14, "sawtooth", 0.035);
+    },
   };
 
   function resize() {
@@ -129,19 +164,54 @@
 
   function pickTargetCount() {
     const t = GAME_DURATION - state.timeLeft;
-    if (t < 15) return 5;
-    if (t < 35) return 8;
-    if (t < 50) return 11;
-    return 13;
+    let n = 5;
+    if (t < 15) n = 5;
+    else if (t < 35) n = 8;
+    else if (t < 50) n = 11;
+    else n = 13;
+    if (state.timeLeft <= RUSH_TIME) n += 4;
+    if (state.feverTime > 0) n += 1;
+    return n;
   }
 
   function canSpawnHeavy() {
     return GAME_DURATION - state.timeLeft >= 15;
   }
 
-  function createEnemy(forceHeavy = false) {
-    const heavy = forceHeavy || (canSpawnHeavy() && Math.random() < 0.22);
-    const r = heavy ? rand(22, 28) : rand(14, 19);
+  function hasKind(kind) {
+    return state.enemies.some((e) => e.active && e.kind === kind);
+  }
+
+  function elapsed() {
+    return GAME_DURATION - state.timeLeft;
+  }
+
+  function createEnemy(forceKind = null) {
+    let kind = forceKind;
+    if (!kind) {
+      const t = elapsed();
+      if (t >= 18 && !hasKind("bomb") && Math.random() < 0.14) kind = "bomb";
+      else if (t >= 22 && !hasKind("core") && Math.random() < 0.11) kind = "core";
+      else if (canSpawnHeavy() && Math.random() < 0.22) kind = "heavy";
+      else kind = "normal";
+    }
+
+    const heavy = kind === "heavy";
+    const bomb = kind === "bomb";
+    const core = kind === "core";
+    let r = rand(14, 19);
+    let mass = 1;
+    if (heavy) {
+      r = rand(22, 28);
+      mass = 2.4;
+    } else if (bomb) {
+      r = rand(17, 20);
+      mass = 1.15;
+    } else if (core) {
+      r = rand(24, 30);
+      mass = 2.8;
+    }
+
     const margin = r + 8;
     const yMin = fieldTop() + margin;
     const yMax = fieldBottom() - margin - 20;
@@ -151,15 +221,34 @@
       vx: 0,
       vy: 0,
       r,
-      mass: heavy ? 2.4 : 1,
+      mass,
+      kind,
       heavy,
+      bomb,
+      core,
+      fuse: bomb ? BOMB_FUSE : 0,
+      fuseMax: bomb ? BOMB_FUSE : 0,
       hp: 1,
       hit: false,
       life: 1,
       bounceLeft: 2,
+      wallKicks: 0,
       active: true,
       chainTagged: false,
+      id: Math.random().toString(36).slice(2),
     };
+  }
+
+  function trySpawnSpecial(kind) {
+    if (hasKind(kind)) return false;
+    let tries = 0;
+    let enemy;
+    do {
+      enemy = createEnemy(kind);
+      tries += 1;
+    } while (tries < 14 && overlapsAny(enemy));
+    state.enemies.push(enemy);
+    return true;
   }
 
   function ensureEnemyCount() {
@@ -202,37 +291,68 @@
     state.flash = 0;
     state.aim = null;
     state.spawnAcc = 0;
+    state.specialAcc = 0;
     state.chainWindow = 0;
     state.currentChain = 0;
     state.comboMul = 1;
     state.lastMilestone = 0;
+    state.fever = 0;
+    state.feverTime = 0;
+    state.rushActive = false;
+    state.rushAnnounced = false;
     ensureEnemyCount();
     updateHud();
     title.classList.add("hidden");
     result.classList.add("hidden");
+    modeBanner.className = "hidden";
     hud.classList.remove("hidden");
+    hud.classList.remove("fever-active", "rush");
   }
 
   function endGame() {
     state.mode = "result";
     state.bullet = null;
     state.aim = null;
+    state.feverTime = 0;
     hud.classList.add("hidden");
+    hud.classList.remove("fever-active", "rush");
+    modeBanner.className = "hidden";
     elResultScore.textContent = String(state.score);
     elResultChain.textContent = String(state.maxChain);
     elResultKills.textContent = String(state.kills);
     result.classList.remove("hidden");
   }
 
+  function scoreMultiplier() {
+    let m = state.comboMul;
+    if (state.feverTime > 0) m *= 2;
+    if (state.timeLeft <= RUSH_TIME) m *= RUSH_SCORE_MUL;
+    return m;
+  }
+
   function updateHud() {
     elTime.textContent = String(Math.ceil(Math.max(0, state.timeLeft)));
-    elTime.classList.toggle("warn", state.timeLeft <= 10);
+    elTime.classList.toggle("warn", state.timeLeft <= RUSH_TIME);
     elScore.textContent = String(state.score);
     elMaxChain.textContent = String(state.maxChain);
+    const feverPct =
+      state.feverTime > 0
+        ? (state.feverTime / FEVER_DURATION) * 100
+        : (state.fever / FEVER_MAX) * 100;
+    elFeverFill.style.width = `${Math.max(0, Math.min(100, feverPct))}%`;
+    hud.classList.toggle("fever-active", state.feverTime > 0);
+    hud.classList.toggle("rush", state.timeLeft <= RUSH_TIME && state.mode === "play");
+  }
+
+  function showModeBanner(text, kind) {
+    modeBanner.className = kind;
+    modeBanner.textContent = text;
+    void modeBanner.offsetWidth;
+    modeBanner.classList.add("show");
   }
 
   function addScore(amount, x, y, label) {
-    const gained = Math.round(amount * state.comboMul);
+    const gained = Math.round(amount * scoreMultiplier());
     state.score += gained;
     const big = gained >= 500;
     state.floatTexts.push({
@@ -243,8 +363,42 @@
       maxLife: big ? 1.05 : 0.75,
       vy: big ? -55 : -42,
       size: big ? 26 : gained >= 100 ? 18 : 15,
-      color: big ? "#ffd36a" : "#9fe7ff",
+      color: big ? "#ffd36a" : state.feverTime > 0 ? "#ffe08a" : "#9fe7ff",
     });
+    updateHud();
+  }
+
+  function addPenalty(amount, x, y, label) {
+    state.score = Math.max(0, state.score - amount);
+    state.floatTexts.push({
+      x,
+      y,
+      text: label || `-${amount}`,
+      life: 1,
+      maxLife: 1,
+      vy: -36,
+      size: 20,
+      color: "#ff6b6b",
+    });
+    updateHud();
+  }
+
+  function addFever(amount) {
+    if (state.feverTime > 0) return;
+    state.fever = Math.min(FEVER_MAX, state.fever + amount);
+    if (state.fever >= FEVER_MAX) activateFever();
+    updateHud();
+  }
+
+  function activateFever() {
+    state.fever = 0;
+    state.feverTime = FEVER_DURATION;
+    showModeBanner("FEVER!", "fever");
+    triggerFlash(0.45, "255,200,100");
+    spawnFireworkShow(4);
+    state.shake = Math.min(16, state.shake + 7);
+    audio.fever();
+    vibrate([25, 30, 25, 30, 40]);
     updateHud();
   }
 
@@ -478,6 +632,55 @@
     }
   }
 
+  function coreBlast(core) {
+    spawnRing(core.x, core.y, "#d4a6ff", CORE_BLAST_R, 8);
+    spawnBurst(core.x, core.y, "#e7c6ff", 28, 420);
+    spawnStreaks(core.x, core.y, "#c084fc", 16);
+    triggerFlash(0.4, "210,160,255");
+    audio.core();
+    for (const e of state.enemies) {
+      if (!e.active || e === core) continue;
+      const dx = e.x - core.x;
+      const dy = e.y - core.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > CORE_BLAST_R + e.r) continue;
+      const power = (1 - dist / (CORE_BLAST_R + e.r)) * 680;
+      e.vx += (dx / dist) * power / e.mass;
+      e.vy += (dy / dist) * power / e.mass;
+      e.hit = true;
+      e.chainTagged = true;
+      e.bounceLeft = 2;
+    }
+  }
+
+  function explodeBomb(bomb) {
+    if (!bomb.active) return;
+    bomb.active = false;
+    addPenalty(200, bomb.x, bomb.y - bomb.r, "-200");
+    spawnBurst(bomb.x, bomb.y, "#ff5a4a", 32, 480);
+    spawnStreaks(bomb.x, bomb.y, "#ff8b6a", 18);
+    spawnRing(bomb.x, bomb.y, "#ff4d3a", 140, 8);
+    triggerFlash(0.55, "255,70,50");
+    state.shake = Math.min(18, state.shake + 10);
+    audio.bombBoom();
+    vibrate([40, 30, 50]);
+
+    for (const e of state.enemies) {
+      if (!e.active || e === bomb) continue;
+      const dx = e.x - bomb.x;
+      const dy = e.y - bomb.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > 170 + e.r) continue;
+      const power = (1 - dist / (170 + e.r)) * 820;
+      e.vx += (dx / dist) * power / e.mass;
+      e.vy += (dy / dist) * power / e.mass;
+      e.hit = true;
+      e.chainTagged = true;
+      e.bounceLeft = 2;
+      e.wallKicks = 0;
+    }
+  }
+
   function killEnemy(enemy, fromChain) {
     if (!enemy.active) return;
     enemy.active = false;
@@ -487,11 +690,31 @@
     state.maxChain = Math.max(state.maxChain, n);
     state.chainWindow = 1.5;
 
-    const base = fromChain ? 30 : 20;
-    addScore(base, enemy.x, enemy.y - enemy.r);
+    if (enemy.wallKicks > 0) {
+      const wallPts = WALL_BONUS + Math.min(3, enemy.wallKicks) * 25;
+      addScore(wallPts, enemy.x, enemy.y - enemy.r - 18, "WALL!");
+    }
 
-    const burstCount = (enemy.heavy ? 18 : 12) + Math.min(20, n * 2);
-    const col = enemy.heavy ? "#ffb36a" : "#7ad0ff";
+    let base = fromChain ? 30 : 20;
+    if (enemy.heavy) base += 15;
+    if (enemy.bomb) {
+      base += 100;
+      addScore(base, enemy.x, enemy.y - enemy.r, "DISARM!");
+    } else if (enemy.core) {
+      base += 80;
+      addScore(base, enemy.x, enemy.y - enemy.r, "CORE!");
+      coreBlast(enemy);
+    } else {
+      addScore(base, enemy.x, enemy.y - enemy.r);
+    }
+
+    addFever(FEVER_PER_KILL + Math.min(10, Math.floor(n * 1.2)));
+
+    let col = "#7ad0ff";
+    if (enemy.heavy) col = "#ffb36a";
+    if (enemy.bomb) col = "#ff7a6a";
+    if (enemy.core) col = "#d4a6ff";
+    const burstCount = (enemy.heavy || enemy.core ? 18 : 12) + Math.min(20, n * 2);
     spawnBurst(enemy.x, enemy.y, col, burstCount, 220 + n * 18);
     spawnStreaks(enemy.x, enemy.y, col, 4 + Math.min(10, n));
     spawnRing(enemy.x, enemy.y, col, 36 + n * 4, 3);
@@ -587,17 +810,21 @@
     const len = Math.hypot(vx, vy) || 1;
     const power = Math.min(1, dist / 140);
     const speed = MIN_SHOT_SPEED + (MAX_SHOT_SPEED - MIN_SHOT_SPEED) * power;
+    const piercing = state.feverTime > 0;
     state.bullet = {
       x: state.w * 0.5,
       y: launchY(),
       vx: (vx / len) * speed,
       vy: (vy / len) * speed,
-      r: BULLET_RADIUS,
-      life: 1.6,
-      bounceLeft: 2,
+      r: BULLET_RADIUS + (piercing ? 2 : 0),
+      life: piercing ? 2.1 : 1.6,
+      bounceLeft: piercing ? 3 : 2,
       trail: [],
+      pierceLeft: piercing ? 4 : 0,
+      hitIds: new Set(),
+      fever: piercing,
     };
-    spawnBurst(state.w * 0.5, launchY(), "#9fe7ff", 8, 140);
+    spawnBurst(state.w * 0.5, launchY(), piercing ? "#ffd36a" : "#9fe7ff", 8, 140);
     audio.launch();
   }
 
@@ -667,6 +894,9 @@
     if (bounced && obj.bounceLeft != null) {
       obj.bounceLeft -= 1;
     }
+    if (bounced && isEnemy && obj.hit) {
+      obj.wallKicks = (obj.wallKicks || 0) + 1;
+    }
     return bounced;
   }
 
@@ -729,6 +959,26 @@
       return;
     }
 
+    // Fever countdown
+    if (state.feverTime > 0) {
+      state.feverTime -= dt;
+      if (state.feverTime <= 0) {
+        state.feverTime = 0;
+        updateHud();
+      }
+    }
+
+    // Last 10s rush
+    if (state.timeLeft <= RUSH_TIME && !state.rushAnnounced) {
+      state.rushAnnounced = true;
+      state.rushActive = true;
+      showModeBanner("RUSH!", "rush");
+      triggerFlash(0.35, "255,100,70");
+      audio.rush();
+      vibrate([20, 20, 35]);
+      ensureEnemyCount();
+    }
+
     if (state.chainWindow > 0) {
       state.chainWindow -= dt;
       if (state.chainWindow <= 0 && state.currentChain > 0) {
@@ -750,7 +1000,7 @@
       bounceWall(b, false);
 
       // motion sparks
-      if (Math.random() < 0.55) {
+      if (Math.random() < (b.fever ? 0.85 : 0.55)) {
         state.particles.push({
           type: "spark",
           x: b.x + rand(-3, 3),
@@ -760,7 +1010,7 @@
           life: rand(0.1, 0.22),
           maxLife: 0.22,
           r: rand(1.5, 3),
-          color: "#dff6ff",
+          color: b.fever ? "#ffe08a" : "#dff6ff",
           drag: 0.9,
           gravity: 0,
         });
@@ -768,6 +1018,7 @@
 
       for (const e of state.enemies) {
         if (!e.active) continue;
+        if (b.hitIds.has(e.id)) continue;
         const dx = e.x - b.x;
         const dy = e.y - b.y;
         const rr = e.r + b.r;
@@ -775,24 +1026,33 @@
           const dist = Math.hypot(dx, dy) || 1;
           const nx = dx / dist;
           const ny = dy / dist;
-          const transfer = 1.05;
+          const transfer = b.fever ? 1.2 : 1.05;
           e.vx += (b.vx * transfer) / e.mass;
           e.vy += (b.vy * transfer) / e.mass;
-          e.vx += (nx * 220) / e.mass;
-          e.vy += (ny * 220) / e.mass;
+          e.vx += (nx * (b.fever ? 280 : 220)) / e.mass;
+          e.vy += (ny * (b.fever ? 280 : 220)) / e.mass;
           e.hit = true;
           e.chainTagged = true;
           e.bounceLeft = 2;
+          b.hitIds.add(e.id);
           addScore(10, e.x, e.y - e.r - 8, "+10");
-          spawnBurst(b.x, b.y, "#ffffff", 16, 340);
-          spawnStreaks(b.x, b.y, "#9fe7ff", 10);
+          spawnBurst(b.x, b.y, b.fever ? "#ffd36a" : "#ffffff", 16, 340);
+          spawnStreaks(b.x, b.y, b.fever ? "#ffb347" : "#9fe7ff", 10);
           spawnRing(b.x, b.y, "#ffffff", 55, 4);
-          triggerFlash(0.18, "200,240,255");
+          triggerFlash(0.18, b.fever ? "255,210,120" : "200,240,255");
           state.shake = Math.min(14, state.shake + 2.5);
           state.hitStop = 0.035;
           audio.hit(1);
-          state.bullet = null;
-          break;
+
+          if (b.pierceLeft > 0) {
+            b.pierceLeft -= 1;
+            // slight course keep + speed retain for pierce feel
+            b.vx *= 0.98;
+            b.vy *= 0.98;
+          } else {
+            state.bullet = null;
+            break;
+          }
         }
       }
 
@@ -817,12 +1077,21 @@
 
       bounceWall(e, true);
 
+      if (e.bomb && e.active) {
+        e.fuse -= dt;
+        if (e.fuse <= 1.6 && Math.floor(e.fuse * 6) !== Math.floor((e.fuse + dt) * 6)) {
+          audio.bombWarn();
+        }
+        if (e.fuse <= 0) explodeBomb(e);
+      }
+
       // off-screen kill
       if (
-        e.x < -e.r - 12 ||
-        e.x > state.w + e.r + 12 ||
-        e.y < -e.r - 12 ||
-        e.y > state.h + e.r + 12
+        e.active &&
+        (e.x < -e.r - 12 ||
+          e.x > state.w + e.r + 12 ||
+          e.y < -e.r - 12 ||
+          e.y > state.h + e.r + 12)
       ) {
         killEnemy(e, e.chainTagged);
       }
@@ -866,6 +1135,15 @@
     if (state.spawnAcc > 0.35) {
       state.spawnAcc = 0;
       ensureEnemyCount();
+    }
+
+    // Guaranteed special spawns
+    state.specialAcc += dt;
+    if (state.specialAcc > 7.5) {
+      state.specialAcc = 0;
+      const t = elapsed();
+      if (t >= 18 && !hasKind("bomb") && Math.random() < 0.7) trySpawnSpecial("bomb");
+      else if (t >= 22 && !hasKind("core") && Math.random() < 0.65) trySpawnSpecial("core");
     }
 
     updateFx(dt);
@@ -1008,11 +1286,11 @@
       ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
     }
 
-    // field tint - brighter during high chains
+    // field tint - brighter during high chains / fever / rush
     const heat = Math.min(1, state.currentChain / 12);
     ctx.fillStyle = `rgba(12, 28, 48, ${0.35 + heat * 0.08})`;
     ctx.fillRect(0, fieldTop(), state.w, fieldBottom() - fieldTop());
-    if (heat > 0.2) {
+    if (heat > 0.2 || state.feverTime > 0 || state.timeLeft <= RUSH_TIME) {
       const hg = ctx.createRadialGradient(
         state.w * 0.5,
         state.h * 0.4,
@@ -1021,10 +1299,22 @@
         state.h * 0.4,
         state.w * 0.7
       );
-      hg.addColorStop(0, `rgba(255, 180, 80, ${0.04 + heat * 0.1})`);
+      if (state.feverTime > 0) {
+        hg.addColorStop(0, "rgba(255, 190, 80, 0.16)");
+      } else if (state.timeLeft <= RUSH_TIME) {
+        hg.addColorStop(0, "rgba(255, 70, 50, 0.12)");
+      } else {
+        hg.addColorStop(0, `rgba(255, 180, 80, ${0.04 + heat * 0.1})`);
+      }
       hg.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = hg;
       ctx.fillRect(0, 0, state.w, state.h);
+    }
+
+    if (state.timeLeft <= RUSH_TIME && state.mode === "play") {
+      ctx.strokeStyle = `rgba(255, 90, 60, ${0.25 + Math.sin(performance.now() / 120) * 0.15})`;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(6, fieldTop() + 4, state.w - 12, fieldBottom() - fieldTop() - 8);
     }
 
     drawLaunchZone();
@@ -1033,9 +1323,18 @@
     for (const e of state.enemies) {
       if (!e.active) continue;
       const pulse = e.hit ? 1 + Math.sin(performance.now() / 40) * 0.05 : 1;
+      let glow = e.heavy ? "rgba(255,140,80,0.22)" : "rgba(80,180,255,0.2)";
+      if (e.bomb) {
+        const danger = 1 - e.fuse / Math.max(0.01, e.fuseMax);
+        const blink = e.fuse < 2 ? 0.5 + Math.sin(performance.now() / 50) * 0.5 : 1;
+        glow = `rgba(255,60,50,${0.18 + danger * 0.25 * blink})`;
+      } else if (e.core) {
+        glow = "rgba(180,120,255,0.28)";
+      }
+
       ctx.beginPath();
       ctx.arc(e.x, e.y, (e.r + (e.hit ? 5 : 2)) * pulse, 0, Math.PI * 2);
-      ctx.fillStyle = e.heavy ? "rgba(255,140,80,0.22)" : "rgba(80,180,255,0.2)";
+      ctx.fillStyle = glow;
       ctx.fill();
 
       const g = ctx.createRadialGradient(
@@ -1046,7 +1345,13 @@
         e.y,
         e.r
       );
-      if (e.heavy) {
+      if (e.core) {
+        g.addColorStop(0, "#f0e4ff");
+        g.addColorStop(1, "#9b5cff");
+      } else if (e.bomb) {
+        g.addColorStop(0, "#ffd0c8");
+        g.addColorStop(1, "#e23a2e");
+      } else if (e.heavy) {
         g.addColorStop(0, "#ffe0bf");
         g.addColorStop(1, "#e67a3a");
       } else {
@@ -1058,11 +1363,47 @@
       ctx.fillStyle = g;
       ctx.fill();
 
+      if (e.core) {
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(performance.now() / 700);
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i += 1) {
+          const a = (i * Math.PI * 2) / 6;
+          const px = Math.cos(a) * e.r * 0.55;
+          const py = Math.sin(a) * e.r * 0.55;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (e.bomb) {
+        const ratio = Math.max(0, e.fuse / Math.max(0.01, e.fuseMax));
+        ctx.strokeStyle = "rgba(255,220,180,0.85)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+        ctx.stroke();
+      }
+
       if (e.hit) {
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255,255,255,0.75)";
         ctx.lineWidth = 2.5;
         ctx.stroke();
-        ctx.shadowColor = e.heavy ? "#ffb36a" : "#7ad0ff";
+        ctx.shadowColor = e.core
+          ? "#d4a6ff"
+          : e.bomb
+            ? "#ff7a6a"
+            : e.heavy
+              ? "#ffb36a"
+              : "#7ad0ff";
         ctx.shadowBlur = 16;
         ctx.stroke();
         ctx.shadowBlur = 0;
@@ -1071,6 +1412,7 @@
 
     if (state.bullet) {
       const b = state.bullet;
+      const trailColor = b.fever ? "#ffd36a" : "#9fe7ff";
       for (let i = 0; i < b.trail.length; i += 1) {
         const t = b.trail[i];
         if (t.life <= 0) continue;
@@ -1078,20 +1420,20 @@
         ctx.globalAlpha = a * 0.7;
         ctx.beginPath();
         ctx.arc(t.x, t.y, b.r * (0.4 + a * 0.6), 0, Math.PI * 2);
-        ctx.fillStyle = "#9fe7ff";
+        ctx.fillStyle = trailColor;
         ctx.fill();
       }
       ctx.globalAlpha = 1;
 
-      ctx.shadowColor = "#9fe7ff";
-      ctx.shadowBlur = 18;
+      ctx.shadowColor = trailColor;
+      ctx.shadowBlur = b.fever ? 24 : 18;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r + 7, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.22)";
       ctx.fill();
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = b.fever ? "#ffe9a8" : "#ffffff";
       ctx.fill();
       ctx.shadowBlur = 0;
     }

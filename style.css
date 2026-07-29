@@ -42,8 +42,8 @@ body {
   left: 0;
   right: 0;
   z-index: 5;
-  display: grid;
-  grid-template-columns: 1fr 1.4fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: calc(10px + env(safe-area-inset-top)) 14px 8px;
   pointer-events: none;
@@ -54,6 +54,12 @@ body {
   display: none;
 }
 
+.hud-top {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 8px;
+}
+
 .hud-left,
 .hud-center,
 .hud-right {
@@ -61,6 +67,117 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+}
+
+.fever-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.fever-label {
+  font-family: Orbitron, sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #ffc56e;
+  min-width: 42px;
+}
+
+.fever-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(20, 36, 56, 0.9);
+  border: 1px solid rgba(255, 190, 100, 0.35);
+  overflow: hidden;
+}
+
+#fever-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffb347, #ffe08a 55%, #fff6c8);
+  box-shadow: 0 0 12px rgba(255, 200, 80, 0.55);
+  transition: width 0.12s linear;
+}
+
+#hud.fever-active .fever-label {
+  color: #ffe9a8;
+}
+
+#hud.fever-active #fever-fill {
+  background: linear-gradient(90deg, #ff7a3c, #ffd36a 40%, #ffffff);
+  animation: feverPulse 0.45s ease-in-out infinite alternate;
+}
+
+#hud.rush #time {
+  color: #ff8b6a;
+  text-shadow: 0 0 12px rgba(255, 100, 80, 0.7);
+}
+
+#mode-banner {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  pointer-events: none;
+  font-family: Orbitron, sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: 0.18em;
+  opacity: 0;
+}
+
+#mode-banner.show {
+  animation: modeBanner 1.1s ease-out forwards;
+}
+
+#mode-banner.fever {
+  color: #ffe08a;
+  text-shadow:
+    0 0 18px rgba(255, 180, 60, 0.9),
+    0 0 36px rgba(255, 120, 40, 0.55);
+}
+
+#mode-banner.rush {
+  color: #ff8b6a;
+  text-shadow:
+    0 0 18px rgba(255, 90, 60, 0.9),
+    0 0 36px rgba(255, 40, 40, 0.5);
+}
+
+#mode-banner.hidden {
+  display: none;
+}
+
+@keyframes feverPulse {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.25);
+  }
+}
+
+@keyframes modeBanner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.7);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -65%) scale(1.05);
+  }
 }
 
 .label {

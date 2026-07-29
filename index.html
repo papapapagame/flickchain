@@ -15,24 +15,34 @@
     <canvas id="game"></canvas>
 
     <div id="hud" class="hidden">
-      <div class="hud-left">
-        <span class="label">TIME</span>
-        <span id="time">60</span>
+      <div class="hud-top">
+        <div class="hud-left">
+          <span class="label">TIME</span>
+          <span id="time">60</span>
+        </div>
+        <div class="hud-center">
+          <span class="label">SCORE</span>
+          <span id="score">0</span>
+        </div>
+        <div class="hud-right">
+          <span class="label">MAX</span>
+          <span id="max-chain">0</span>
+        </div>
       </div>
-      <div class="hud-center">
-        <span class="label">SCORE</span>
-        <span id="score">0</span>
-      </div>
-      <div class="hud-right">
-        <span class="label">MAX</span>
-        <span id="max-chain">0</span>
+      <div class="fever-row">
+        <span class="fever-label">FEVER</span>
+        <div class="fever-track">
+          <div id="fever-fill"></div>
+        </div>
       </div>
     </div>
+
+    <div id="mode-banner" class="hidden" aria-hidden="true"></div>
 
     <div id="title" class="overlay">
       <p class="brand">FLICK CHAIN</p>
       <h1>フリックチェイン</h1>
-      <p class="sub">敵をぶつけて連鎖一掃。60秒勝負。</p>
+      <p class="sub">敵をぶつけて連鎖一掃。60秒勝負。<br />コアを狙い、ボムを処理し、フィーバーで貫通せよ。</p>
       <button id="btn-start" type="button">スタート</button>
       <p class="hint">下から上へフリックで発射</p>
     </div>
