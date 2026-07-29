@@ -3,6 +3,9 @@
 
   const GAME_DURATION = 60;
   const LAUNCH_ZONE_RATIO = 0.18;
+  // Visual zone stays the same; touch start accepts a much larger area above it.
+  const LAUNCH_HIT_EXTRA_RATIO = 0.14;
+  const LAUNCH_HIT_EXTRA_MIN = 90;
   const MAX_SHOT_SPEED = 920;
   const MIN_SHOT_SPEED = 280;
   const BULLET_RADIUS = 9;
@@ -528,8 +531,13 @@
     };
   }
 
+  function launchHitTop() {
+    const extra = Math.max(LAUNCH_HIT_EXTRA_MIN, state.h * LAUNCH_HIT_EXTRA_RATIO);
+    return fieldBottom() - extra;
+  }
+
   function inLaunchZone(y) {
-    return y >= fieldBottom();
+    return y >= launchHitTop();
   }
 
   function onPointerDown(e) {
