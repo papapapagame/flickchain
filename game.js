@@ -50,7 +50,7 @@
     maxChain: 0,
     kills: 0,
     enemies: [],
-    bullet: null,
+    bullets: [],
     particles: [],
     rings: [],
     floatTexts: [],
@@ -282,7 +282,7 @@
     state.maxChain = 0;
     state.kills = 0;
     state.enemies = [];
-    state.bullet = null;
+    state.bullets = [];
     state.particles = [];
     state.rings = [];
     state.floatTexts = [];
@@ -309,9 +309,19 @@
     hud.classList.remove("fever-active", "rush");
   }
 
+  function maxBullets() {
+    if (state.timeLeft <= RUSH_TIME) return 4;
+    if (state.feverTime > 0) return 3;
+    return 2;
+  }
+
+  function canShoot() {
+    return state.bullets.length < maxBullets();
+  }
+
   function endGame() {
     state.mode = "result";
-    state.bullet = null;
+    state.bullets = [];
     state.aim = null;
     state.feverTime = 0;
     hud.classList.add("hidden");
@@ -769,7 +779,7 @@
     audio.ensure();
     const p = pointerPos(e);
     if (!inLaunchZone(p.y)) return;
-    if (state.bullet) return;
+    if (!canShoot()) return;
     state.aim = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
     if (canvas.setPointerCapture && e.pointerId != null) {
       try {
@@ -798,6 +808,7 @@
     const dy = aim.y1 - aim.y0;
     const dist = Math.hypot(dx, dy);
     if (dist < 18) return;
+    if (!canShoot()) return;
 
     // Prefer upward flicks; reverse if user dragged downward
     let vx = dx;
@@ -811,7 +822,7 @@
     const power = Math.min(1, dist / 140);
     const speed = MIN_SHOT_SPEED + (MAX_SHOT_SPEED - MIN_SHOT_SPEED) * power;
     const piercing = state.feverTime > 0;
-    state.bullet = {
+    state.bullets.push({
       x: state.w * 0.5,
       y: launchY(),
       vx: (vx / len) * speed,
@@ -823,7 +834,8 @@
       pierceLeft: piercing ? 4 : 0,
       hitIds: new Set(),
       fever: piercing,
-    };
+      alive: true,
+    });
     spawnBurst(state.w * 0.5, launchY(), piercing ? "#ffd36a" : "#9fe7ff", 8, 140);
     audio.launch();
   }
@@ -987,9 +999,9 @@
       }
     }
 
-    // bullet
-    if (state.bullet) {
-      const b = state.bullet;
+    // bullets
+    for (const b of state.bullets) {
+      if (!b.alive) continue;
       b.trail.push({ x: b.x, y: b.y, life: 0.22 });
       if (b.trail.length > 14) b.trail.shift();
       for (const t of b.trail) t.life -= dt;
@@ -999,7 +1011,6 @@
       b.life -= dt;
       bounceWall(b, false);
 
-      // motion sparks
       if (Math.random() < (b.fever ? 0.85 : 0.55)) {
         state.particles.push({
           type: "spark",
@@ -1017,7 +1028,7 @@
       }
 
       for (const e of state.enemies) {
-        if (!e.active) continue;
+        if (!e.active || !b.alive) continue;
         if (b.hitIds.has(e.id)) continue;
         const dx = e.x - b.x;
         const dy = e.y - b.y;
@@ -1046,20 +1057,20 @@
 
           if (b.pierceLeft > 0) {
             b.pierceLeft -= 1;
-            // slight course keep + speed retain for pierce feel
             b.vx *= 0.98;
             b.vy *= 0.98;
           } else {
-            state.bullet = null;
+            b.alive = false;
             break;
           }
         }
       }
 
-      if (state.bullet && (b.life <= 0 || b.bounceLeft < 0 || b.y < -40 || b.y > state.h + 40)) {
-        state.bullet = null;
+      if (b.alive && (b.life <= 0 || b.bounceLeft < 0 || b.y < -40 || b.y > state.h + 40)) {
+        b.alive = false;
       }
     }
+    state.bullets = state.bullets.filter((b) => b.alive);
 
     // enemies
     const active = state.enemies.filter((e) => e.active);
@@ -1179,7 +1190,7 @@
   }
 
   function drawAim() {
-    if (!state.aim || state.bullet) return;
+    if (!state.aim || !canShoot()) return;
     const ax = state.w * 0.5;
     const ay = launchY();
     let dx = state.aim.x1 - state.aim.x0;
@@ -1410,8 +1421,7 @@
       }
     }
 
-    if (state.bullet) {
-      const b = state.bullet;
+    for (const b of state.bullets) {
       const trailColor = b.fever ? "#ffd36a" : "#9fe7ff";
       for (let i = 0; i < b.trail.length; i += 1) {
         const t = b.trail[i];
