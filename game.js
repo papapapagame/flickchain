@@ -39,9 +39,16 @@
   const elResultScore = document.getElementById("result-score");
   const elResultChain = document.getElementById("result-chain");
   const elResultKills = document.getElementById("result-kills");
+  const elResultDiff = document.getElementById("result-diff");
+  const elResultNew = document.getElementById("result-new");
+  const elHsNormal = document.getElementById("hs-normal");
+  const elHsExtra = document.getElementById("hs-extra");
+
+  const HS_KEY = "flickchain_highscores_v1";
 
   const state = {
     mode: "title", // title | play | result
+    difficulty: "normal", // normal | extra
     w: 0,
     h: 0,
     dpr: 1,
@@ -275,7 +282,49 @@
     return false;
   }
 
-  function resetGame() {
+  function loadHighScores() {
+    try {
+      const raw = localStorage.getItem(HS_KEY);
+      if (!raw) return { normal: 0, extra: 0 };
+      const data = JSON.parse(raw);
+      return {
+        normal: Math.max(0, Number(data.normal) || 0),
+        extra: Math.max(0, Number(data.extra) || 0),
+      };
+    } catch (_) {
+      return { normal: 0, extra: 0 };
+    }
+  }
+
+  function saveHighScores(scores) {
+    try {
+      localStorage.setItem(HS_KEY, JSON.stringify(scores));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function updateTitleHighScores() {
+    const hs = loadHighScores();
+    elHsNormal.textContent = String(hs.normal);
+    elHsExtra.textContent = String(hs.extra);
+  }
+
+  function recordHighScore() {
+    const hs = loadHighScores();
+    const key = state.difficulty === "extra" ? "extra" : "normal";
+    let isNew = false;
+    if (state.score > hs[key]) {
+      hs[key] = state.score;
+      saveHighScores(hs);
+      isNew = true;
+    }
+    updateTitleHighScores();
+    return isNew;
+  }
+
+  function resetGame(difficulty) {
+    if (difficulty) state.difficulty = difficulty;
     state.mode = "play";
     state.score = 0;
     state.timeLeft = GAME_DURATION;
@@ -309,7 +358,25 @@
     hud.classList.remove("fever-active", "rush");
   }
 
+  function goToTitle() {
+    state.mode = "title";
+    state.bullets = [];
+    state.aim = null;
+    state.feverTime = 0;
+    state.enemies = [];
+    state.particles = [];
+    state.rings = [];
+    state.floatTexts = [];
+    hud.classList.add("hidden");
+    hud.classList.remove("fever-active", "rush");
+    modeBanner.className = "hidden";
+    result.classList.add("hidden");
+    updateTitleHighScores();
+    title.classList.remove("hidden");
+  }
+
   function maxBullets() {
+    if (state.difficulty === "extra") return Infinity;
     if (state.timeLeft <= RUSH_TIME) return 4;
     if (state.feverTime > 0) return 3;
     return 2;
@@ -327,9 +394,12 @@
     hud.classList.add("hidden");
     hud.classList.remove("fever-active", "rush");
     modeBanner.className = "hidden";
+    elResultDiff.textContent = state.difficulty === "extra" ? "EXTRA" : "NORMAL";
     elResultScore.textContent = String(state.score);
     elResultChain.textContent = String(state.maxChain);
     elResultKills.textContent = String(state.kills);
+    const isNew = recordHighScore();
+    elResultNew.classList.toggle("hidden", !isNew);
     result.classList.remove("hidden");
   }
 
@@ -403,6 +473,22 @@
   function activateFever() {
     state.fever = 0;
     state.feverTime = FEVER_DURATION;
+
+    // +2s unless already in rush
+    if (state.timeLeft > RUSH_TIME) {
+      state.timeLeft += 2;
+      state.floatTexts.push({
+        x: state.w * 0.5,
+        y: fieldTop() + 36,
+        text: "+2s",
+        life: 1,
+        maxLife: 1,
+        vy: -30,
+        size: 22,
+        color: "#ffe08a",
+      });
+    }
+
     showModeBanner("FEVER!", "fever");
     triggerFlash(0.45, "255,200,100");
     spawnFireworkShow(4);
@@ -1491,16 +1577,25 @@
     state.aim = null;
   });
 
-  document.getElementById("btn-start").addEventListener("click", () => {
+  document.getElementById("btn-normal").addEventListener("click", () => {
     audio.ensure();
-    resetGame();
+    resetGame("normal");
+  });
+  document.getElementById("btn-extra").addEventListener("click", () => {
+    audio.ensure();
+    resetGame("extra");
   });
   document.getElementById("btn-retry").addEventListener("click", () => {
     audio.ensure();
-    resetGame();
+    resetGame(state.difficulty);
+  });
+  document.getElementById("btn-title").addEventListener("click", () => {
+    audio.ensure();
+    goToTitle();
   });
 
   window.addEventListener("resize", resize);
+  updateTitleHighScores();
   resize();
   requestAnimationFrame(loop);
 })();

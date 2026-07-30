@@ -43,18 +43,38 @@
       <p class="brand">FLICK CHAIN</p>
       <h1>フリックチェイン</h1>
       <p class="sub">敵をぶつけて連鎖一掃。60秒勝負。<br />コアを狙い、ボムを処理し、フィーバーで貫通せよ。</p>
-      <button id="btn-start" type="button">スタート</button>
-      <p class="hint">下から上へフリックで発射</p>
+
+      <ul class="highscores">
+        <li>
+          <span>NORMAL</span>
+          <strong id="hs-normal">0</strong>
+        </li>
+        <li>
+          <span>EXTRA</span>
+          <strong id="hs-extra">0</strong>
+        </li>
+      </ul>
+
+      <div class="diff-buttons">
+        <button id="btn-normal" type="button" class="btn-diff">NORMAL</button>
+        <button id="btn-extra" type="button" class="btn-diff btn-extra">EXTRA</button>
+      </div>
+      <p class="hint">EXTRA は発射数無制限</p>
     </div>
 
     <div id="result" class="overlay hidden">
       <p class="brand">RESULT</p>
+      <p id="result-diff" class="result-diff">NORMAL</p>
       <h1 id="result-score">0</h1>
+      <p id="result-new" class="new-record hidden">NEW RECORD</p>
       <ul class="stats">
         <li><span>最大連鎖</span><strong id="result-chain">0</strong></li>
         <li><span>総撃破</span><strong id="result-kills">0</strong></li>
       </ul>
-      <button id="btn-retry" type="button">もう一回</button>
+      <div class="result-buttons">
+        <button id="btn-retry" type="button">もう一回</button>
+        <button id="btn-title" type="button" class="btn-secondary">タイトルへ</button>
+      </div>
     </div>
 
     <div id="chain-fx" aria-hidden="true">

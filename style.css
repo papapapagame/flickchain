@@ -251,8 +251,51 @@ body {
 .sub {
   font-size: 14px;
   color: #a9bdd8;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
   line-height: 1.6;
+}
+
+.highscores {
+  list-style: none;
+  width: min(280px, 86%);
+  margin-bottom: 22px;
+}
+
+.highscores li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(126, 160, 200, 0.2);
+  font-size: 13px;
+  color: #a9bdd8;
+  font-family: Orbitron, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.highscores strong {
+  font-size: 18px;
+  color: #9fe7ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(280px, 86%);
+}
+
+.btn-diff {
+  width: 100%;
+}
+
+.btn-extra {
+  color: #1a0a18;
+  background: linear-gradient(180deg, #ffd36a 0%, #ff8b4a 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 190, 100, 0.4),
+    0 10px 28px rgba(220, 120, 40, 0.35);
 }
 
 .hint {
@@ -280,6 +323,47 @@ button {
 
 button:active {
   transform: scale(0.97);
+}
+
+.btn-secondary {
+  color: #d7e7ff;
+  background: transparent;
+  border: 1px solid rgba(130, 180, 230, 0.45);
+  box-shadow: none;
+  padding: 14px 36px;
+}
+
+.result-diff {
+  font-family: Orbitron, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: #7ea0c8;
+  margin-bottom: 6px;
+}
+
+.new-record {
+  font-family: Orbitron, sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  color: #ffd36a;
+  margin: -8px 0 16px;
+  text-shadow: 0 0 14px rgba(255, 180, 60, 0.7);
+}
+
+.new-record.hidden {
+  display: none;
+}
+
+.result-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(280px, 86%);
+  align-items: stretch;
+}
+
+.result-buttons button {
+  width: 100%;
 }
 
 .stats {
